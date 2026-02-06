@@ -1,0 +1,475 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Marketplace - Compre e Venda</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .star-rating {
+            display: inline-flex;
+            gap: 2px;
+        }
+        .star {
+            cursor: pointer;
+            font-size: 24px;
+            color: #d1d5db;
+            transition: color 0.2s;
+        }
+        .star.active {
+            color: #fbbf24;
+        }
+        .photo-preview {
+            position: relative;
+            display: inline-block;
+        }
+        .remove-photo {
+            position: absolute;
+            top: -8px;
+            right: -8px;
+            background: #ef4444;
+            color: white;
+            border-radius: 50%;
+            width: 24px;
+            height: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        .category-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        }
+    </style>
+</head>
+<body class="bg-gray-50">
+    <div id="app"></div>
+
+    <script>
+        // State Management
+        const state = {
+            currentView: 'home',
+            user: null,
+            products: [],
+            categories: [
+                { id: 1, name: 'Eletrônicos', icon: '📱' },
+                { id: 2, name: 'Veículos', icon: '🚗' },
+                { id: 3, name: 'Imóveis', icon: '🏠' },
+                { id: 4, name: 'Moda', icon: '👔' },
+                { id: 5, name: 'Casa e Jardim', icon: '🛋️' },
+                { id: 6, name: 'Esportes', icon: '⚽' },
+                { id: 7, name: 'Livros', icon: '📚' },
+                { id: 8, name: 'Móveis', icon: '🪑' },
+                { id: 9, name: 'Pets', icon: '🐕' },
+                { id: 10, name: 'Serviços', icon: '🔧' }
+            ],
+            currencies: [
+                { code: 'MZN', symbol: 'MT', name: 'Metical' },
+                { code: 'USD', symbol: '$', name: 'Dólar' },
+                { code: 'EUR', symbol: '€', name: 'Euro' },
+                { code: 'ZAR', symbol: 'R', name: 'Rand' },
+                { code: 'GBP', symbol: '£', name: 'Libra' },
+                { code: 'BRL', symbol: 'R$', name: 'Real' }
+            ],
+            selectedProduct: null,
+            selectedUserId: null,
+            filterCategory: null,
+            recentlyViewed: [],
+            favorites: [],
+            newProduct: {
+                title: '',
+                description: '',
+                price: '',
+                currency: 'MZN',
+                category: '',
+                condition: 'new',
+                photos: []
+            },
+            settings: {
+                notifications: true,
+                emailAlerts: true,
+                showPhone: true,
+                language: 'pt',
+                theme: 'light'
+            }
+        };
+
+        // Load data from localStorage
+        function loadData() {
+            const savedUser = localStorage.getItem('marketplace_user');
+            const savedProducts = localStorage.getItem('marketplace_products');
+            const savedRecentlyViewed = localStorage.getItem('marketplace_recent');
+            const savedFavorites = localStorage.getItem('marketplace_favorites');
+            const savedSettings = localStorage.getItem('marketplace_settings');
+            
+            if (savedUser) {
+                state.user = JSON.parse(savedUser);
+            }
+            if (savedProducts) {
+                state.products = JSON.parse(savedProducts);
+            }
+            if (savedRecentlyViewed) {
+                state.recentlyViewed = JSON.parse(savedRecentlyViewed);
+            }
+            if (savedFavorites) {
+                state.favorites = JSON.parse(savedFavorites);
+            }
+            if (savedSettings) {
+                state.settings = JSON.parse(savedSettings);
+            }
+        }
+
+        // Save data to localStorage
+        function saveData() {
+            if (state.user) {
+                localStorage.setItem('marketplace_user', JSON.stringify(state.user));
+            }
+            localStorage.setItem('marketplace_products', JSON.stringify(state.products));
+            localStorage.setItem('marketplace_recent', JSON.stringify(state.recentlyViewed));
+            localStorage.setItem('marketplace_favorites', JSON.stringify(state.favorites));
+            localStorage.setItem('marketplace_settings', JSON.stringify(state.settings));
+        }
+
+        // Authentication
+        function register(name, email, password, phone) {
+            const users = JSON.parse(localStorage.getItem('marketplace_users') || '[]');
+            
+            if (users.find(u => u.email === email)) {
+                alert('Email já cadastrado!');
+                return false;
+            }
+
+            const newUser = {
+                id: Date.now(),
+                name,
+                email,
+                password,
+                phone,
+                createdAt: new Date().toISOString()
+            };
+
+            users.push(newUser);
+            localStorage.setItem('marketplace_users', JSON.stringify(users));
+            
+            state.user = newUser;
+            saveData();
+            return true;
+        }
+
+        function login(email, password) {
+            const users = JSON.parse(localStorage.getItem('marketplace_users') || '[]');
+            const user = users.find(u => u.email === email && u.password === password);
+
+            if (user) {
+                state.user = user;
+                saveData();
+                return true;
+            }
+            
+            alert('Email ou senha incorretos!');
+            return false;
+        }
+
+        function logout() {
+            state.user = null;
+            localStorage.removeItem('marketplace_user');
+            changeView('home');
+        }
+
+        // Product Management
+        function addProduct(product) {
+            const newProduct = {
+                id: Date.now(),
+                ...product,
+                userId: state.user.id,
+                userName: state.user.name,
+                userPhone: state.user.phone,
+                createdAt: new Date().toISOString(),
+                ratings: []
+            };
+
+            state.products.unshift(newProduct);
+            saveData();
+            
+            // Reset form
+            state.newProduct = {
+                title: '',
+                description: '',
+                price: '',
+                currency: 'MZN',
+                category: '',
+                condition: 'new',
+                photos: []
+            };
+        }
+
+        function addRating(productId, rating, comment) {
+            const product = state.products.find(p => p.id === productId);
+            if (product) {
+                product.ratings.push({
+                    userId: state.user.id,
+                    userName: state.user.name,
+                    rating,
+                    comment,
+                    date: new Date().toISOString()
+                });
+                saveData();
+            }
+        }
+
+        function getAverageRating(product) {
+            if (!product.ratings || product.ratings.length === 0) return 0;
+            const sum = product.ratings.reduce((acc, r) => acc + r.rating, 0);
+            return (sum / product.ratings.length).toFixed(1);
+        }
+
+        // Photo handling
+        function handlePhotoUpload(event) {
+            const files = Array.from(event.target.files);
+            
+            files.forEach(file => {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    state.newProduct.photos.push(e.target.result);
+                    render();
+                };
+                reader.readAsDataURL(file);
+            });
+        }
+
+        function removePhoto(index) {
+            state.newProduct.photos.splice(index, 1);
+            render();
+        }
+
+        // WhatsApp Integration
+        function contactWhatsApp(phone, productTitle) {
+            const message = encodeURIComponent(`Olá! Tenho interesse no produto: ${productTitle}`);
+            window.open(`https://wa.me/${phone}?text=${message}`, '_blank');
+        }
+
+        // Favorites Management
+        function toggleFavorite(productId) {
+            const index = state.favorites.indexOf(productId);
+            if (index > -1) {
+                state.favorites.splice(index, 1);
+            } else {
+                state.favorites.push(productId);
+            }
+            saveData();
+            render();
+        }
+
+        function isFavorite(productId) {
+            return state.favorites.includes(productId);
+        }
+
+        // Recently Viewed
+        function addToRecentlyViewed(productId) {
+            // Remove if already exists
+            const index = state.recentlyViewed.indexOf(productId);
+            if (index > -1) {
+                state.recentlyViewed.splice(index, 1);
+            }
+            // Add to beginning
+            state.recentlyViewed.unshift(productId);
+            // Keep only last 10
+            if (state.recentlyViewed.length > 10) {
+                state.recentlyViewed = state.recentlyViewed.slice(0, 10);
+            }
+            saveData();
+        }
+
+        function getRecentlyViewedProducts() {
+            return state.recentlyViewed
+                .map(id => state.products.find(p => p.id === id))
+                .filter(p => p !== undefined);
+        }
+
+        // Settings Management
+        function updateSettings(newSettings) {
+            state.settings = { ...state.settings, ...newSettings };
+            saveData();
+        }
+
+        // Delete Product
+        function deleteProduct(productId) {
+            if (confirm('Tem certeza que deseja excluir este produto?')) {
+                const index = state.products.findIndex(p => p.id === productId);
+                if (index > -1) {
+                    state.products.splice(index, 1);
+                    saveData();
+                    changeView('dashboard');
+                }
+            }
+        }
+
+        // View Management
+        function changeView(view, data = null) {
+            state.currentView = view;
+            if (data) {
+                state.selectedProduct = data;
+            }
+            render();
+        }
+
+        // Components
+        function Header() {
+            return `
+                <header class="bg-blue-600 text-white shadow-lg">
+                    <div class="container mx-auto px-4 py-4">
+                        <div class="flex justify-between items-center">
+                            <div class="flex items-center gap-3 cursor-pointer" onclick="changeView('home')">
+                                <span class="text-3xl">🛒</span>
+                                <h1 class="text-2xl font-bold">Marketplace</h1>
+                            </div>
+                            
+                            <nav class="flex items-center gap-4">
+                                ${state.user ? `
+                                    <button onclick="changeView('favorites')" class="hover:bg-blue-700 px-3 py-2 rounded-lg transition" title="Favoritos">
+                                        ❤️
+                                    </button>
+                                    <button onclick="changeView('sell')" class="bg-green-500 hover:bg-green-600 px-4 py-2 rounded-lg font-semibold transition">
+                                        Vender
+                                    </button>
+                                    <button onclick="changeView('dashboard')" class="hover:bg-blue-700 px-4 py-2 rounded-lg transition">
+                                        Meu Painel
+                                    </button>
+                                    <button onclick="changeView('settings')" class="hover:bg-blue-700 px-3 py-2 rounded-lg transition" title="Configurações">
+                                        ⚙️
+                                    </button>
+                                    <button onclick="logout()" class="hover:bg-blue-700 px-4 py-2 rounded-lg transition">
+                                        Sair
+                                    </button>
+                                ` : `
+                                    <button onclick="changeView('login')" class="hover:bg-blue-700 px-4 py-2 rounded-lg transition">
+                                        Entrar
+                                    </button>
+                                    <button onclick="changeView('register')" class="bg-green-500 hover:bg-green-600 px-4 py-2 rounded-lg font-semibold transition">
+                                        Cadastrar
+                                    </button>
+                                `}
+                            </nav>
+                        </div>
+                    </div>
+                </header>
+            `;
+        }
+
+        function LoginView() {
+            return `
+                <div class="min-h-screen flex items-center justify-center px-4">
+                    <div class="bg-white rounded-lg shadow-xl p-8 w-full max-w-md">
+                        <h2 class="text-3xl font-bold text-gray-800 mb-6 text-center">Entrar</h2>
+                        
+                        <form onsubmit="event.preventDefault(); handleLogin();" class="space-y-4">
+                            <div>
+                                <label class="block text-gray-700 font-semibold mb-2">Email</label>
+                                <input type="email" id="login-email" required
+                                    class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                            </div>
+                            
+                            <div>
+                                <label class="block text-gray-700 font-semibold mb-2">Senha</label>
+                                <input type="password" id="login-password" required
+                                    class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                            </div>
+                            
+                            <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-lg transition">
+                                Entrar
+                            </button>
+                        </form>
+                        
+                        <p class="mt-6 text-center text-gray-600">
+                            Não tem conta? 
+                            <button onclick="changeView('register')" class="text-blue-600 hover:underline font-semibold">
+                                Cadastre-se
+                            </button>
+                        </p>
+                    </div>
+                </div>
+            `;
+        }
+
+        function RegisterView() {
+            return `
+                <div class="min-h-screen flex items-center justify-center px-4 py-8">
+                    <div class="bg-white rounded-lg shadow-xl p-8 w-full max-w-md">
+                        <h2 class="text-3xl font-bold text-gray-800 mb-6 text-center">Cadastrar</h2>
+                        
+                        <form onsubmit="event.preventDefault(); handleRegister();" class="space-y-4">
+                            <div>
+                                <label class="block text-gray-700 font-semibold mb-2">Nome Completo</label>
+                                <input type="text" id="register-name" required
+                                    class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                            </div>
+                            
+                            <div>
+                                <label class="block text-gray-700 font-semibold mb-2">Email</label>
+                                <input type="email" id="register-email" required
+                                    class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                            </div>
+                            
+                            <div>
+                                <label class="block text-gray-700 font-semibold mb-2">Telefone (WhatsApp)</label>
+                                <input type="tel" id="register-phone" required placeholder="+258..."
+                                    class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                            </div>
+                            
+                            <div>
+                                <label class="block text-gray-700 font-semibold mb-2">Senha</label>
+                                <input type="password" id="register-password" required minlength="6"
+                                    class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                            </div>
+                            
+                            <button type="submit" class="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 rounded-lg transition">
+                                Criar Conta
+                            </button>
+                        </form>
+                        
+                        <p class="mt-6 text-center text-gray-600">
+                            Já tem conta? 
+                            <button onclick="changeView('login')" class="text-blue-600 hover:underline font-semibold">
+                                Entrar
+                            </button>
+                        </p>
+                    </div>
+                </div>
+            `;
+        }
+
+        function HomeView() {
+            const recentProducts = getRecentlyViewedProducts();
+            const filteredProducts = state.filterCategory 
+                ? state.products.filter(p => p.category == state.filterCategory)
+                : state.products;
+
+            return `
+                <div class="container mx-auto px-4 py-8">
+                    <!-- Categories -->
+                    <div class="mb-8">
+                        <h2 class="text-2xl font-bold text-gray-800 mb-4">Categorias</h2>
+                        <div class="grid grid-cols-2 md:grid-cols-5 gap-4">
+                            ${state.categories.map(cat => `
+                                <div onclick="filterByCategory(${cat.id})" 
+                                    class="category-card bg-white p-6 rounded-lg shadow hover:shadow-lg transition cursor-pointer text-center ${state.filterCategory == cat.id ? 'ring-2 ring-blue-500' : ''}">
+                                    <div class="text-4xl mb-2">${cat.icon}</div>
+                                    <div class="font-semibold text-gray-800">${cat.name}</div>
+                                </div>
+                            `).join('')}
+                        </div>
+                        ${state.filterCategory ? `
+                            <div class="mt-4 text-center">
+                                <button onclick="clearFilter()" class="bg-gray-200 hover:bg-gray-300 px-4 py-2 rounded-lg font-semibold transition">
+                                    ✕ Limpar Filtro
+                                </button>
+                            </div>
+                        ` : ''}
+                    </div>
+
+                    <!-- Recently Viewed -->
+                    ${recentProducts.length > 0 && !state.filterCategory ? `
+                        <div class="mb-8">
+                            <h2 class="text-2xl font-bold text-gray-800 mb-4">🕐 Visualizados R
